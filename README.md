@@ -157,3 +157,17 @@ I split the work between Claude for the initial frontend and ChatGPT for backend
 - **Stack adjustment:** the initial plan used Express/PostgreSQL; the implementation uses a Worker and D1 to fit the available hosting environment while retaining the React frontend.
 
 The central product decision was to prioritize a small, consent-based staff workflow and explain the missing operational pieces, rather than claim to solve the entire reunification system.
+
+## Vercel frontend deployment
+
+The repository also supports a Vercel frontend while the existing Cloudflare/D1 backend remains hosted at the original live URL above. `vercel.json` selects the separate Vite build (`npm run build:frontend`) and `dist-frontend` output. The original `npm run build` remains the backend's Vinext build.
+
+Import `haaris-usman-saeed/findtogether` into Vercel, use the repository root, and choose Node.js 24.x. Keep the build settings supplied by `vercel.json`. No database credentials or frontend environment variables are needed. Once deployed, use the actual Vercel production URL as the submission link; a Vercel URL has not yet been verified here.
+
+Browser requests stay on `/api` on the Vercel domain. A small Node function (`api/proxy.ts`) forwards requests to the fixed backend, preserving session tokens, idempotency keys, status codes, and JSON bodies. It checks the incoming origin before setting the upstream origin, does not forward browser cookies, and disables API caching. Client-side page URLs fall back to `index.html` so refreshes work.
+
+The database is not migrated or copied. Existing demo sessions on the original domain do not transfer automatically because session storage is scoped to each domain; choose a demo role again on Vercel. The backend must remain published. This split adds a network hop and the backend's IP rate limit may be shared by visitors using a Vercel egress address; it is suitable for the evaluation demo, not regional emergency traffic.
+
+After deployment, open the production URL in a private browser window, choose each demo role, change shelters, register a fictional person, refresh a nested page, and confirm the record persists. Check `/api/health` returns `{"ok":true,"storage":"sql"}`. Local tests validate proxy behavior and the production frontend build, but do not establish connectivity from Vercel to the live backend.
+
+AI process note: Codex prepared this separate frontend build and API proxy, keeping Claude's interface and the existing database backend.
