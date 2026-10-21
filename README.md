@@ -14,24 +14,92 @@ The app does not automatically reunite people or publish a directory of evacuees
 
 **Demo note:** All starting records are fictional. Anyone can try either staff role in their own isolated demo workspace. This role selector is for evaluation, not production staff authentication. Please do not enter real personal information.
 
-### Screenshots
+### At a glance
 
-These screenshots are from the original frontend prototype. The deployed app retains its design and adds a session selector, a demo entry screen, and location withholding before contact authorization.
+| Built | Deliberately out of scope |
+| --- | --- |
+| Staff-assisted intake and family searches | A public people-search directory |
+| Server-enforced consent and role checks | Real staff identity verification |
+| Explainable matching and contact approval | Automatic identity decisions or outbound calls |
+| Persistent SQL data and retry-safe submissions | Offline sync and agency integrations |
 
-![Volunteer dashboard](docs/screenshots/dashboard.png)
-![Reviewing ambiguous matches](docs/screenshots/ambiguous.png)
-![Relationship and consent verification](docs/screenshots/verification.png)
+[Try it](#try-the-demo) · [Visual walkthrough](#visual-walkthrough) · [Design](#design) · [Technical choices](#technical-choices) · [Run locally](#running-locally)
 
 ## Try the demo
 
-1. Choose **Coordinator**, open **Cases**, and select **S-1041**. Someone searching for “Mari Ortiz” has a possible match registered as “Marisol Reyes.” Review the evidence; a name match alone is not verification.
-2. Start verification. Record the relationship as confirmed, then record both people's agreement. Select a contact method and authorize contact. Only then are the candidate's shelter and contact details released. These buttons record staff actions; they do not place a call or independently verify anyone.
-3. Open **S-1042** to see multiple plausible Joe/José matches. Staff can rule out candidates or flag the case for further review.
-4. Open **S-1043** to see a child's case routed out of the ordinary matching workflow.
-5. Switch to **Volunteer**, register a fictional person, and create a search request. Refresh the page to check that saved records persist.
-6. Search for **Ana Ruiz**. Her protected registration does not appear as a match. A requester receives no indication that a protected record exists.
+**Start with Coordinator for the case-review flow, or Volunteer for intake.** Each new demo workspace comes with fictional cases so you can explore without entering data first.
+
+| Try this | What to look for |
+| --- | --- |
+| Coordinator → Cases → **S-1041** | “Mari Ortiz” may be Marisol Reyes. Review the evidence, begin verification, confirm the relationship, record both people's agreement, and authorize contact. |
+| Coordinator → Cases → **S-1042** | Several Joe/José records fit. Flag the ambiguity for additional review instead of treating the first result as the answer. |
+| Coordinator → Cases → **S-1043** | A child's search is routed to safeguarding rather than ordinary matching. This is a status, not an actual agency referral. |
+| Volunteer → Register | Add a fictional person, save the receipt, then refresh. Saved records persist in the database. |
+| Volunteer → Find family → search for **Robert Tran**, about **30–44** | The seeded Bobby Tran record demonstrates nickname matching. Switch to Coordinator to review the resulting case. |
+| Search for **Ana Ruiz** | Her protected record must not appear as a candidate. The requester should learn nothing about her registration or location. |
+
+**A useful failure check:** try to authorize contact before completing verification. The app should refuse. Buttons record what staff say happened; they do not call anyone or independently verify identities.
 
 Role changes retain the current workspace. The demo token is kept in the browser tab; refresh preserves it, but closing the tab can end access. A cookie may also retain access where supported. An unrelated browser starts a separate workspace. Sessions expire after seven days; expired data is cleaned when a subsequent session is created.
+
+## Visual walkthrough
+
+> **Screenshot provenance:** These four images show Claude's original frontend prototype, not a fresh capture of the deployed build. The current app adds demo role/shelter selectors and server enforcement. In particular, the older case screenshots show shelter locations before authorization; the current backend withholds candidate locations until contact is authorized. The old “Reviewer tools” panel is not part of the deployed HTTP interface.
+
+### 1. A volunteer at the shelter desk
+
+A person arrives without a working phone or ID. The volunteer needs two clear actions: register them or record who they are looking for. A reference slip gives them something to bring back later without needing an account or device.
+
+![Prototype volunteer dashboard with registration, family search, and consent follow-up actions](docs/screenshots/dashboard.png)
+
+**Example:** Someone gives only “Lena” and an approximate age. Staff can record that incomplete information. If they have not yet agreed to family search, their registration stays out of matching until permission is recorded.
+
+### 2. A plausible match still needs verification
+
+Daniel asks for his sister “Mari Ortiz.” She registered as “Marisol Reyes.” The app compares names, ages, places, and family notes, and exposes both agreements and differences so the coordinator can reason about the match.
+
+![Prototype case S-1041 showing evidence and ordered relationship and consent steps](docs/screenshots/verification.png)
+
+**What this demonstrates:** A nickname or shared family name can justify a closer look, but it cannot authorize contact. The coordinator records the relationship check, each person's agreement, and the chosen contact method before contact details become available.
+
+### 3. Sometimes the correct next step is more information
+
+Inés is looking for her father, Joe or José Martinez. Three records look plausible; two might even describe the same person registered at different shelters. Picking the first record would conceal that uncertainty.
+
+![Prototype case S-1042 with three possible matches, duplicate warnings, and an additional-review note](docs/screenshots/ambiguous.png)
+
+**Example review note:** “Ask Inés for her father's middle name and where he was staying.” A review flag preserves that question for the next coordinator and blocks contact authorization while review is outstanding.
+
+### 4. Case review on a narrow screen
+
+Staff may have access to a shared phone even when the displaced person does not. The interface keeps the case status and possible-match language visible on a narrow screen.
+
+<img src="docs/screenshots/mobile-case.png" alt="Original mobile prototype showing the Mari Ortiz case, progress steps, and possible match" width="390" />
+
+*This is a prototype mobile screenshot, not evidence of a new browser accessibility audit.*
+
+### How the consent gate works
+
+```mermaid
+flowchart TD
+    A["Registration"] --> B{"Discovery allowed and no safety restriction?"}
+    B -->|No| C["Exclude from ordinary matching"]
+    B -->|Yes| D["Possible match for staff review"]
+    D --> E{"Relationship confirmed, both agree, review cleared?"}
+    E -->|No| F["Keep contact and candidate location withheld"]
+    E -->|Yes| G["Authorize staff-mediated contact"]
+```
+
+Children follow a separate safeguarding path. An apparent match never overrides a safety restriction or a refusal.
+
+### Two examples where no result is the right result
+
+| Situation | Staff-facing behavior | What the requester learns |
+| --- | --- | --- |
+| Ana is registered but protected | Her record is excluded before matching. | The request remains active; nothing reveals that Ana is registered. |
+| A named person has not registered | No candidate is available. | The same limited active-request status. |
+
+That similarity is intentional. A search must not become a way to discover whether someone has sought shelter or refused contact.
 
 ## The full picture
 
@@ -93,6 +161,21 @@ A reference slip identifies a request; it is not proof of identity. Volunteers a
 | Schema and input checks | Drizzle migrations and Zod validation | Version the database structure and validate requests on the server |
 | Matching | Explainable name and age rules | Give staff inspectable evidence rather than an unexplained identity score |
 
+### Request and data flow
+
+```mermaid
+flowchart TD
+    A["React interface"] --> B{"Hosting route"}
+    B -->|Original deployment| D["Worker API: role, validation, consent"]
+    B -->|Vercel frontend setup| C["Same-origin API proxy"]
+    C --> D
+    D --> E["D1: workspace, sessions, rate limits"]
+    E --> D
+    D --> F["Permitted view returned to staff"]
+```
+
+The Vercel configuration is committed; its live connection has not yet been verified. Both deployment paths are designed to use the same existing backend.
+
 The browser calls `/api/*`. The server loads records, checks the session's role, runs matching, enforces consent, and returns only the permitted view. Hiding a field in the UI is not the privacy boundary.
 
 An opaque demo token is sent in `X-Findtogether-Session` and stored in sessionStorage, with an in-memory fallback. This avoids relying on cookies in embedded browsers. Tokens are hashed in the database, expire, and rotate on role changes. The token is JavaScript-accessible, so this is a demo workspace mechanism, not production staff authentication. Production would require vetted accounts and real shelter assignments.
@@ -140,9 +223,9 @@ Apply each migration only once to each database. Local and hosted databases are 
 
 ## Testing and verification
 
-Automated tests cover matching, privacy, form validation, server-side roles, invalid inputs, persistent writes, workspace isolation, concurrent writes, retry deduplication, contact gating, consent withdrawal, and children's cases.
+**52 automated tests passed during the Vercel preparation**, covering matching, privacy, form validation, server-side roles, invalid inputs, persistent writes, workspace isolation, concurrent writes, retry deduplication, contact gating, consent withdrawal, and children's cases.
 
-Backend integration tests execute the generated migrations against real SQLite through a small D1 adapter. A regression test uses the real HTTP client without cookies to check navigation requests, registration, role switching, and session expiry. TypeScript and production-build checks passed during implementation.
+Backend integration tests execute the generated migrations against real SQLite through a small D1 adapter. A regression test uses the real HTTP client without cookies to check navigation requests, registration, role switching, and session expiry. TypeScript and production-build checks passed during implementation. Four proxy tests additionally cover session/idempotency forwarding, cross-origin rejection, authentication and empty responses, and upstream failures.
 
 Deployment has succeeded. Automated browser verification of the hosted app was unavailable in the development environment, so manual browser testing remains part of the submission check. The app has not been load-tested at disaster scale or tested with actual response staff.
 
@@ -170,4 +253,4 @@ The database is not migrated or copied. Existing demo sessions on the original d
 
 After deployment, open the production URL in a private browser window, choose each demo role, change shelters, register a fictional person, refresh a nested page, and confirm the record persists. Check `/api/health` returns `{"ok":true,"storage":"sql"}`. Local tests validate proxy behavior and the production frontend build, but do not establish connectivity from Vercel to the live backend.
 
-AI process note: Codex prepared this separate frontend build and API proxy, keeping Claude's interface and the existing database backend.
+AI process note: Codex prepared the separate frontend build and API proxy, and expanded this README with seeded-case walkthroughs, the existing mobile screenshot, and architecture/consent diagrams. No new live screenshots were captured for this documentation update.
