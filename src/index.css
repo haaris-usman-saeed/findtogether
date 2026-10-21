@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-canvas text-ink antialiased;
+    text-rendering: optimizeLegibility;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply font-sans text-base;
+  }
+
+  /* One focus style everywhere: dark, thick, offset, visible on every surface in the palette. */
+  :focus-visible {
+    outline: 3px solid #1e2226;
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: #cfe0e5;
+  }
+
+  input[type='radio'],
+  input[type='checkbox'] {
+    cursor: pointer;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* "Print reference slip" prints the slip and nothing else. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-slip,
+  .print-slip * {
+    visibility: visible;
+  }
+  .print-slip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: 1px solid #000;
+  }
+}

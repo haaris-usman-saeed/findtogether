@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `shelter_id` text DEFAULT 'lincoln' NOT NULL;
